@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autonomous World MVP</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>Autonomous World</h1>
+        <p class="sub">Characters act. You watch.</p>
+      </div>
+      <div class="controls">
+        <button id="step">STEP</button>
+        <button id="run">PLAY 10</button>
+        <button id="reset">RESET</button>
+        <button id="save">SAVE</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <aside>
+        <h2>World</h2>
+        <div id="world"></div>
+        <h2>Characters</h2>
+        <div id="characters"></div>
+      </aside>
+
+      <section>
+        <h2>Event Log</h2>
+        <div id="events" class="events"></div>
+      </section>
+    </section>
+  </main>
+
+<script>
+async function getState() {
+  const r = await fetch('/api/state');
+  return r.json();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function render(state) {
+  const w = state.world;
+  document.getElementById("world").innerHTML = `
+    <div class="card">
+      <strong>${escapeHtml(w.title)}</strong>
+      <p>${escapeHtml(w.time)} · ${escapeHtml(w.location)}</p>
+      <p>${escapeHtml(w.premise)}</p>
+      <p><b>Turn:</b> ${state.turn}</p>
+    </div>`;
+
+  const chars = Object.entries(state.characters).map(([name, c]) => `
+    <div class="card">
+      <strong>${escapeHtml(name)}</strong>
+      <p>${escapeHtml(c.public_state)}</p>
+      <small>Goals: ${escapeHtml(c.goals.join(", "))}</small>
+    </div>`).join("");
+  document.getElementById("characters").innerHTML = chars;
+
+  const events = [...state.events].reverse().map(e => `
+    <article class="event">
+      <div class="event-head">
+        <b>Turn ${e.turn}: ${escapeHtml(e.actor)}</b>
+        <span>${escapeHtml(e.action_type)}</span>
+      </div>
+      <p><b>Action:</b> ${escapeHtml(e.action)}</p>
+      ${e.spoken ? `<p class="speech">“${escapeHtml(e.spoken)}”</p>` : ""}
+      <p><b>Why:</b> ${escapeHtml(e.motivation)}</p>
+      <p><b>Consequence:</b> ${escapeHtml(e.consequence)}</p>
+      ${e.knowledge_used?.length ? `<p><b>Knowledge:</b> ${escapeHtml(e.knowledge_used.join("; "))}</p>` : ""}
+    </article>`).join("");
+
+  document.getElementById("events").innerHTML =
+    events || `<div class="empty">Press PLAY. Nobody is waiting for your input.</div>`;
+}
+
+async function refresh() {
+  render(await getState());
+}
+
+async function post(url, body={}) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (data.error) alert(data.error);
+  return data;
+}
+
+document.getElementById("step").onclick = async () => {
+  await post("/api/step");
+  refresh();
+};
+
+document.getElementById("run").onclick = async () => {
+  await post("/api/run", {steps: 10});
+  refresh();
+};
+
+document.getElementById("reset").onclick = async () => {
+  await post("/api/reset", {scenario: "harry_test"});
+  refresh();
+};
+
+document.getElementById("save").onclick = async () => {
+  const result = await post("/api/save");
+  alert(result.saved || "Saved");
+};
+
+refresh();
+</script>
+</body>
+</html>
